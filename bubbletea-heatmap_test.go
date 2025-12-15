@@ -27,10 +27,10 @@ func readFromFile(filename string) []CalDataPoint {
 
 func TestGetIndexDate(t *testing.T) {
 	now := time.Now()
-	expectedX, expectedY := getDateIndex(now)
+	expectedX, expectedY := getDateIndex(now, now, 52)
 
-	actualDate := getIndexDate(expectedX, expectedY)
-	actualX, actualY := getDateIndex(actualDate)
+	actualDate := getIndexDate(expectedX, expectedY, now, 52)
+	actualX, actualY := getDateIndex(actualDate, now, 52)
 
 	if actualDate.Month() != now.Month() &&
 		actualDate.Year() != now.Year() &&
@@ -45,13 +45,14 @@ func TestGetIndexDate(t *testing.T) {
 
 func TestManyDates(t *testing.T) {
 	now := time.Now()
+	refDate := now
 
 	for i := 0; i < 350; i++ {
 
-		expectedX, expectedY := getDateIndex(now)
+		expectedX, expectedY := getDateIndex(now, refDate, 52)
 
-		actualDate := getIndexDate(expectedX, expectedY)
-		actualX, actualY := getDateIndex(actualDate)
+		actualDate := getIndexDate(expectedX, expectedY, refDate, 52)
+		actualX, actualY := getDateIndex(actualDate, refDate, 52)
 
 		if actualDate.Month() != now.Month() ||
 			actualDate.Year() != now.Year() ||
@@ -72,15 +73,16 @@ func TestManyDates(t *testing.T) {
 
 func TestFileDates(t *testing.T) {
 	// Get list of dates from file
+	now := time.Now()
 
 	calData := readFromFile("./tests/test.json")
 
 	for _, v := range calData {
 
-		expectedX, expectedY := getDateIndex(v.Date)
+		expectedX, expectedY := getDateIndex(v.Date, now, 52)
 
-		actualDate := getIndexDate(expectedX, expectedY)
-		actualX, actualY := getDateIndex(actualDate)
+		actualDate := getIndexDate(expectedX, expectedY, now, 52)
+		actualX, actualY := getDateIndex(actualDate, now, 52)
 
 		if actualDate.Month() != v.Date.Local().Month() ||
 			actualDate.Year() != v.Date.Local().Year() ||
@@ -103,23 +105,23 @@ func TestDateOutsideRange(t *testing.T) {
 
 	dateInRange := now.AddDate(0, -1, -1)
 	var testData []CalDataPoint
-	parseCalToView(testData)
+	parseCalToView(testData, now, 52)
 
 	testData = append(testData, CalDataPoint{Date: dateInRange, Value: 1.0})
-	parseCalToView(testData)
+	parseCalToView(testData, now, 52)
 
 	testData = append(testData, CalDataPoint{Date: now, Value: 0.0})
-	parseCalToView(testData)
+	parseCalToView(testData, now, 52)
 
 	dateOutsideRange := now.AddDate(-1, -1, 0)
 	dataOutsideRange := CalDataPoint{Date: dateOutsideRange, Value: 0.5}
 
 	testData = append(testData, dataOutsideRange)
-	parseCalToView(testData)
+	parseCalToView(testData, now, 52)
 
 	dateOutsideRangeFuture := now.AddDate(0, 1, 0)
 	dataOutsideRangeFuture := CalDataPoint{Date: dateOutsideRangeFuture, Value: 0.5}
 
 	testData = append(testData, dataOutsideRangeFuture)
-	parseCalToView(testData)
+	parseCalToView(testData, now, 52)
 }

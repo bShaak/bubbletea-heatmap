@@ -26,10 +26,14 @@ func main() {
 		os.Exit(1)
 	}
 
+	// customTheme := []string{"#e0f7fa", "#b2ebf2", "#80deea", "#4dd0e1", "#26c6da"}
+
 	// Create the model
 	// Use a date that covers the test data (ends March 2023)
 	refDate := time.Date(2023, 3, 4, 0, 0, 0, 0, time.UTC)
-	m := heatmap.New(calData, refDate, 0)
+	// m := heatmap.New(calData, refDate, 0, heatmap.WithTheme("light"))
+	m := heatmap.New(calData, refDate, 0, heatmap.WithTheme("dark"))
+	// m := heatmap.New(calData, refDate, 0, heatmap.WithTheme(customTheme))
 
 	// Run the bubble tea program
 	p := tea.NewProgram(m)

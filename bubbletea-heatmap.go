@@ -9,6 +9,26 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+var (
+	// Light Theme
+	LightTheme = []string{
+		"#ebedf0", // Less
+		"#9be9a8",
+		"#40c463",
+		"#30a14e",
+		"#216e39", // More
+	}
+
+	// Dark Theme
+	DarkTheme = []string{
+		"#161b22", // Less
+		"#0e4429",
+		"#006d32",
+		"#26a641",
+		"#39d353", // - More
+	}
+)
+
 type Model struct {
 	selectedX int
 	selectedY int
@@ -16,23 +36,7 @@ type Model struct {
 	viewData  [][7]viewDataPoint
 	Weeks     int
 	EndDate   time.Time // The reference date for the heatmap (usually "today")
-}
-
-var scaleColors = []string{
-	// Light Theme
-	// #ebedf0 - Less
-	// #9be9a8
-	// #40c463
-	// #30a14e
-	// #216e39 - More
-
-	// Dark Theme
-	"#161b22", // Less
-	"#0e4429",
-	"#006d32",
-	"#26a641",
-	"#39d353", // - More
-
+	colors    []string
 }
 
 type CalDataPoint struct {
@@ -133,36 +137,63 @@ type viewDataPoint struct {
 	normalized float64
 }
 
-func getScaleColor(value float64) string {
+func (m Model) getScaleColor(value float64) string {
 	const numColors = 5
 	// Assume it's normalized between 0.0-1.0
 	const max = 1.0
 	// const min = 0.0
 
-	return scaleColors[int((value/max)*(numColors-1))]
+	return m.colors[int((value/max)*(numColors-1))]
 }
 
 func (m Model) Init() tea.Cmd {
 	return nil
 }
 
+type Option func(*Model)
+
+func WithTheme(theme interface{}) Option {
+	return func(m *Model) {
+		switch t := theme.(type) {
+		case string:
+			switch t {
+			case "light":
+				m.colors = LightTheme
+			case "dark":
+				m.colors = DarkTheme
+			}
+		case []string:
+			if len(t) == 5 {
+				m.colors = t
+			}
+		}
+	}
+}
+
 // Create a new model with default settings.
-func New(data []CalDataPoint, endDate time.Time, weeks int) Model {
+func New(data []CalDataPoint, endDate time.Time, weeks int, opts ...Option) Model {
 	if weeks <= 0 {
 		weeks = 52
 	}
 	todayX, todayY := getDateIndex(endDate, endDate, weeks)
 
 	parsedData := parseCalToView(data, endDate, weeks)
-	return Model{
+	m := Model{
 		selectedX: todayX,
 		selectedY: todayY,
 		calData:   data,
 		viewData:  parsedData,
 		Weeks:     weeks,
 		EndDate:   endDate,
+		colors:    DarkTheme,
 		// focus:     false, // TODO
 	}
+
+	for _, opt := range opts {
+		opt(&m)
+	}
+
+	return m
 }
 
 // func (m *Model) Focus() tea.Cmd { // TODO
@@ -245,11 +276,11 @@ func (m Model) View() string {
 
 	boxStyle := lipgloss.NewStyle().
 		PaddingRight(1).
-		Foreground(lipgloss.Color(scaleColors[2]))
+		Foreground(lipgloss.Color(m.colors[2]))
 
 	boxSelectedStyle := boxStyle.Copy().
 		Background(lipgloss.Color("#9999ff")).
-		Foreground(lipgloss.Color(scaleColors[0]))
+		Foreground(lipgloss.Color(m.colors[0]))
 
 	// Month Labels
 	var currMonth time.Month
@@ -295,7 +326,7 @@ func (m Model) View() string {
 			if m.selectedX == i && m.selectedY == j {
 				s += boxSelectedStyle.Copy().Foreground(
 					lipgloss.Color(
-						getScaleColor(
+						m.getScaleColor(
 							m.viewData[i][j].normalized))).
 					Render("■")
 			} else if i == m.Weeks-1 &&
@@ -309,7 +340,7 @@ func (m Model) View() string {
 				s += boxStyle.Copy().
 					Foreground(
 						lipgloss.Color(
-							getScaleColor(
+							m.getScaleColor(
 								m.viewData[i][j].normalized))).
 					Render("■")
 			}

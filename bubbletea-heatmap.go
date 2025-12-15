@@ -148,6 +148,9 @@ func (m Model) Init() tea.Cmd {
 
 // Create a new model with default settings.
 func New(data []CalDataPoint, endDate time.Time, weeks int) Model {
+	if weeks <= 0 {
+		weeks = 52
+	}
 	todayX, todayY := getDateIndex(endDate, endDate, weeks)
 
 	parsedData := parseCalToView(data, endDate, weeks)

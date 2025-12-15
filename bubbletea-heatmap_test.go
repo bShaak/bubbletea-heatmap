@@ -125,3 +125,13 @@ func TestDateOutsideRange(t *testing.T) {
 	testData = append(testData, dataOutsideRangeFuture)
 	parseCalToView(testData, now, 52)
 }
+
+func TestNoPanicWithZeroWeeks(t *testing.T) {
+	now := time.Now()
+	var calData []CalDataPoint
+	m := New(calData, now, 0)
+
+	if m.Weeks != 52 {
+		t.Errorf("Expected weeks to default to 52, got %d", m.Weeks)
+	}
+}

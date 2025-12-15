@@ -29,7 +29,7 @@ func main() {
 	// Create the model
 	// Use a date that covers the test data (ends March 2023)
 	refDate := time.Date(2023, 3, 4, 0, 0, 0, 0, time.UTC)
-	m := heatmap.New(calData, refDate, 12)
+	m := heatmap.New(calData, refDate, 0)
 
 	// Run the bubble tea program
 	p := tea.NewProgram(m)

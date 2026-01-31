@@ -9,29 +9,34 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+var (
+	// Light Theme
+	LightTheme = []string{
+		"#ebedf0", // Less
+		"#9be9a8",
+		"#40c463",
+		"#30a14e",
+		"#216e39", // More
+	}
+
+	// Dark Theme
+	DarkTheme = []string{
+		"#161b22", // Less
+		"#0e4429",
+		"#006d32",
+		"#26a641",
+		"#39d353", // - More
+	}
+)
+
 type Model struct {
 	selectedX int
 	selectedY int
 	calData   []CalDataPoint
-	viewData  [52][7]viewDataPoint // Hardcoded to one year for now
-	// focus     bool // TODO
-}
-
-var scaleColors = []string{
-	// Light Theme
-	// #ebedf0 - Less
-	// #9be9a8
-	// #40c463
-	// #30a14e
-	// #216e39 - More
-
-	// Dark Theme
-	"#161b22", // Less
-	"#0e4429",
-	"#006d32",
-	"#26a641",
-	"#39d353", // - More
-
+	viewData  [][7]viewDataPoint
+	Weeks     int
+	EndDate   time.Time // The reference date for the heatmap (usually "today")
+	colors    []string
 }
 
 type CalDataPoint struct {
@@ -45,10 +50,10 @@ func (m *Model) addCalData(date time.Time, val float64) {
 	m.calData = append(m.calData, newPoint)
 }
 
-func getIndexDate(x int, y int) time.Time {
+func getIndexDate(x int, y int, now time.Time, weeks int) time.Time {
 	// compare the x,y to today and subtract
-	today := time.Now()
-	todayX, todayY := getDateIndex(today)
+	today := now
+	todayX, todayY := getDateIndex(today, now, weeks)
 
 	diffX := todayX - x
 	diffY := todayY - y
@@ -59,8 +64,8 @@ func getIndexDate(x int, y int) time.Time {
 	return targetDate
 }
 
-func weeksAgo(date time.Time) int {
-	today := truncateToDate(time.Now())
+func weeksAgo(date time.Time, now time.Time) int {
+	today := truncateToDate(now)
 	thisWeek := today.AddDate(0, 0, -int(today.Weekday())) // Most recent Sunday
 
 	compareDate := truncateToDate(date)
@@ -74,24 +79,23 @@ func truncateToDate(t time.Time) time.Time {
 	return time.Date(t.Local().Year(), t.Local().Month(), t.Local().Day(), 0, 0, 0, 0, t.Local().Location())
 }
 
-func getDateIndex(date time.Time) (int, int) {
+func getDateIndex(date time.Time, now time.Time, weeks int) (int, int) {
 	// Max index - number of weeks ago
-	x := 51 - weeksAgo(date)
+	x := (weeks - 1) - weeksAgo(date, now)
 
 	y := int(date.Local().Weekday())
 
 	return x, y
 }
 
-func parseCalToView(calData []CalDataPoint) [52][7]viewDataPoint {
-	var viewData [52][7]viewDataPoint
+func parseCalToView(calData []CalDataPoint, now time.Time, weeks int) [][7]viewDataPoint {
+	viewData := make([][7]viewDataPoint, weeks)
 
 	for _, v := range calData {
-		x, y := getDateIndex(v.Date)
+		x, y := getDateIndex(v.Date, now, weeks)
 		// Check if in range
-		// TODO: un-hardcode the X limit
 		if x > -1 && y > -1 &&
-			x < 52 && y < 7 {
+			x < weeks && y < 7 {
 			viewData[x][y].actual += v.Value
 		}
 	}
@@ -99,7 +103,7 @@ func parseCalToView(calData []CalDataPoint) [52][7]viewDataPoint {
 	return viewData
 }
 
-func normalizeViewData(data [52][7]viewDataPoint) [52][7]viewDataPoint {
+func normalizeViewData(data [][7]viewDataPoint) [][7]viewDataPoint {
 	var min float64
 	var max float64
 
@@ -133,31 +137,63 @@ type viewDataPoint struct {
 	normalized float64
 }
 
-func getScaleColor(value float64) string {
+func (m Model) getScaleColor(value float64) string {
 	const numColors = 5
 	// Assume it's normalized between 0.0-1.0
 	const max = 1.0
 	// const min = 0.0
 
-	return scaleColors[int((value/max)*(numColors-1))]
+	return m.colors[int((value/max)*(numColors-1))]
 }
 
 func (m Model) Init() tea.Cmd {
 	return nil
 }
 
-// Create a new model with default settings.
-func New(data []CalDataPoint) Model {
-	todayX, todayY := getDateIndex(time.Now())
+type Option func(*Model)
 
-	parsedData := parseCalToView(data)
-	return Model{
+func WithTheme(theme interface{}) Option {
+	return func(m *Model) {
+		switch t := theme.(type) {
+		case string:
+			switch t {
+			case "light":
+				m.colors = LightTheme
+			case "dark":
+				m.colors = DarkTheme
+			}
+		case []string:
+			if len(t) == 5 {
+				m.colors = t
+			}
+		}
+	}
+}
+
+// Create a new model with default settings.
+func New(data []CalDataPoint, endDate time.Time, weeks int, opts ...Option) Model {
+	if weeks <= 0 {
+		weeks = 52
+	}
+	todayX, todayY := getDateIndex(endDate, endDate, weeks)
+
+	parsedData := parseCalToView(data, endDate, weeks)
+	m := Model{
 		selectedX: todayX,
 		selectedY: todayY,
 		calData:   data,
 		viewData:  parsedData,
+		Weeks:     weeks,
+		EndDate:   endDate,
+		colors:    DarkTheme,
 		// focus:     false, // TODO
 	}
+
+	for _, opt := range opts {
+		opt(&m)
+	}
+
+	return m
 }
 
 // func (m *Model) Focus() tea.Cmd { // TODO
@@ -165,13 +201,15 @@ func New(data []CalDataPoint) Model {
 // return m.Cursor.Focus()
 // }
 
-func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
+func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// TODO: ignore if not focused
 	// if !m.focus { return m, nil }
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
+		case "ctrl+c", "q":
+			return m, tea.Quit
 		case "up", "k":
 			if m.selectedY > 0 {
 				m.selectedY--
@@ -185,10 +223,10 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		case "down", "j":
 			// Don't allow user to scroll beyond today
 			if m.selectedY < 6 &&
-				(m.selectedX != 51 ||
-					m.selectedY < int(time.Now().Weekday())) {
+				(m.selectedX != m.Weeks-1 ||
+					m.selectedY < int(m.EndDate.Weekday())) {
 				m.selectedY++
-			} else if m.selectedY == 6 && m.selectedX != 51 {
+			} else if m.selectedY == 6 && m.selectedX != m.Weeks-1 {
 				// Scroll to the beginning of next week if on Saturday
 				// and not at the end of the calendar.
 				m.selectedY = 0
@@ -196,9 +234,9 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			}
 		case "right", "l":
 			// Don't allow users to scroll beyond today from the previous column
-			if m.selectedX < 50 ||
-				(m.selectedX == 50 &&
-					m.selectedY <= int(time.Now().Weekday())) {
+			if m.selectedX < m.Weeks-2 ||
+				(m.selectedX == m.Weeks-2 &&
+					m.selectedY <= int(m.EndDate.Weekday())) {
 				m.selectedX++
 			}
 		case "left", "h":
@@ -208,10 +246,10 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		case "enter", " ":
 			// Hard coded to add a new entry with value `1.0`
 			m.addCalData(
-				getIndexDate(m.selectedX, m.selectedY),
+				getIndexDate(m.selectedX, m.selectedY, m.EndDate, m.Weeks),
 
 				1.0)
-			m.viewData = parseCalToView(m.calData)
+			m.viewData = parseCalToView(m.calData, m.EndDate, m.Weeks)
 
 		}
 	}
@@ -221,7 +259,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 func (m Model) View() string {
 	// The header
 
-	theTime := getIndexDate(m.selectedX, m.selectedY) // time.Now()
+	theTime := getIndexDate(m.selectedX, m.selectedY, m.EndDate, m.Weeks) // time.Now()
 
 	title, _ := glamour.Render(theTime.Format("# Monday, January 02, 2006"), "dark")
 	s := title
@@ -238,22 +276,23 @@ func (m Model) View() string {
 
 	boxStyle := lipgloss.NewStyle().
 		PaddingRight(1).
-		Foreground(lipgloss.Color(scaleColors[2]))
+		Foreground(lipgloss.Color(m.colors[2]))
 
 	boxSelectedStyle := boxStyle.Copy().
 		Background(lipgloss.Color("#9999ff")).
-		Foreground(lipgloss.Color(scaleColors[0]))
+		Foreground(lipgloss.Color(m.colors[0]))
 
 	// Month Labels
+	// TODO: revisit this logic to make the month labels more consistent
 	var currMonth time.Month
 	s += "  "
-	for j := 0; j < 52; j++ {
+	for j := 0; j < m.Weeks; j++ {
 		// Check the last day of the week for that column
-		jMonth := getIndexDate(j, 6).Month()
+		jMonth := getIndexDate(j, 6, m.EndDate, m.Weeks).Month()
 
 		if currMonth != jMonth {
 			currMonth = jMonth
-			s += labelStyle.Render(getIndexDate(j, 6).Format("Jan") + " ")
+			s += labelStyle.Render(getIndexDate(j, 6, m.EndDate, m.Weeks).Format("Jan") + " ")
 
 			// Skip the length of the label we just added
 			j += 1
@@ -283,16 +322,16 @@ func (m Model) View() string {
 		}
 
 		// Add calendar days
-		for i := 0; i < 52; i++ {
+		for i := 0; i < m.Weeks; i++ {
 			// Selected Item
 			if m.selectedX == i && m.selectedY == j {
 				s += boxSelectedStyle.Copy().Foreground(
 					lipgloss.Color(
-						getScaleColor(
+						m.getScaleColor(
 							m.viewData[i][j].normalized))).
 					Render("■")
-			} else if i == 51 &&
-				j > int(time.Now().Weekday()) {
+			} else if i == m.Weeks-1 &&
+				j > int(m.EndDate.Weekday()) {
 
 				// In the future
 				s += boxStyle.Render(" ")
@@ -302,7 +341,7 @@ func (m Model) View() string {
 				s += boxStyle.Copy().
 					Foreground(
 						lipgloss.Color(
-							getScaleColor(
+							m.getScaleColor(
 								m.viewData[i][j].normalized))).
 					Render("■")
 			}

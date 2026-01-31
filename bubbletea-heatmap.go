@@ -283,6 +283,7 @@ func (m Model) View() string {
 		Foreground(lipgloss.Color(m.colors[0]))
 
 	// Month Labels
+	// TODO: revisit this logic to make the month labels more consistent
 	var currMonth time.Month
 	s += "  "
 	for j := 0; j < m.Weeks; j++ {
